@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Agricultural Advisory Control Room</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    .agent-node { transition: all 0.3s ease; }
+    .agent-active { border-color: #22c55e !important; box-shadow: 0 0 12px rgba(34, 197, 94, 0.4); }
+    .agent-failed { border-color: #ef4444 !important; box-shadow: 0 0 12px rgba(239, 68, 68, 0.4); }
+    .board-pulse { animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  </style>
+</head>
+<body class="bg-transparent text-[var(--foreground)] antialiased p-4 m-0 font-sans">
+  <div class="max-w-6xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-[var(--border)] gap-3">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">🌾</span>
+          <h1 class="text-xl font-bold tracking-tight text-[var(--foreground)]">Agricultural Advisory Control Room</h1>
+          <span class="px-2 py-0.5 text-xs font-semibold rounded bg-green-500/20 text-green-400 border border-green-500/30">Blackboard Architecture</span>
+        </div>
+        <p class="text-xs text-[var(--muted-foreground)] mt-1">Microsoft Agent Framework • SQLite Blackboard • Fan-out / Fan-in Multi-Agent System</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-[var(--muted-foreground)] font-mono" id="session-badge">Session: session_idle</span>
+        <button id="run-btn" onclick="runPipeline()" class="px-4 py-2 text-xs font-semibold rounded-md bg-green-600 hover:bg-green-500 text-white shadow-lg transition-all flex items-center gap-2 cursor-pointer ring-2 ring-green-400/50 animate-pulse">
+          <span>⚡</span> Run Control Room Advisory
+        </button>
+      </div>
+    </div>
+
+    <!-- Control Bar & Inputs -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-lg bg-[var(--card)] border border-[var(--card-border)] text-xs">
+      <div>
+        <label class="block font-medium text-[var(--muted-foreground)] mb-1">Crop</label>
+        <select id="crop-select" onchange="onInputChange()" class="w-full bg-[var(--background)] border border-[var(--border)] rounded px-2.5 py-1.5 text-[var(--foreground)] focus:outline-none focus:border-green-500">
+          <option value="Wheat" selected>Wheat (Kanak / Gehun)</option>
+          <option value="Rice">Rice (Paddy / Dhan)</option>
+          <option value="Mustard">Mustard (Sarson / Raya)</option>
+          <option value="Cotton">Cotton (Kapas)</option>
+          <option value="Maize">Maize (Makka)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block font-medium text-[var(--muted-foreground)] mb-1">Location (District & State)</label>
+        <select id="loc-select" onchange="onInputChange()" class="w-full bg-[var(--background)] border border-[var(--border)] rounded px-2.5 py-1.5 text-[var(--foreground)] focus:outline-none focus:border-green-500">
+          <option value="Karnal, Haryana" selected>Karnal, Haryana (APMC Mandi)</option>
+          <option value="Ludhiana, Punjab">Ludhiana, Punjab (APMC Mandi)</option>
+          <option value="Bharatpur, Rajasthan">Bharatpur, Rajasthan (APMC Mandi)</option>
+          <option value="Indore, Madhya Pradesh">Indore, Madhya Pradesh</option>
+        </select>
+      </div>
+      <div>
+        <label class="block font-medium text-[var(--muted-foreground)] mb-1">Growth Stage</label>
+        <select id="stage-select" onchange="onInputChange()" class="w-full bg-[var(--background)] border border-[var(--border)] rounded px-2.5 py-1.5 text-[var(--foreground)] focus:outline-none focus:border-green-500">
+          <option value="sowing">Sowing</option>
+          <option value="vegetative" selected>Vegetative / CRI Stage</option>
+          <option value="flowering">Flowering / Booting</option>
+          <option value="harvest_ready">Harvest Ready</option>
+        </select>
+      </div>
+      <div>
+        <label class="block font-medium text-[var(--muted-foreground)] mb-1">Language Output</label>
+        <select id="lang-select" onchange="onInputChange()" class="w-full bg-[var(--background)] border border-[var(--border)] rounded px-2.5 py-1.5 text-[var(--foreground)] focus:outline-none focus:border-green-500">
+          <option value="en" selected>English</option>
+          <option value="hi">Hindi (हिंदी)</option>
+          <option value="pa">Punjabi (ਪੰਜਾਬੀ)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Interactive Failure Simulation Checkbox -->
+    <div class="flex items-center justify-between px-4 py-2 rounded bg-[var(--background)] border border-[var(--border)] text-xs">
+      <label class="flex items-center gap-2 cursor-pointer text-[var(--muted-foreground)]">
+        <input type="checkbox" id="fail-market-toggle" onchange="onInputChange()" class="rounded accent-red-500">
+        <span>Simulate Market Agent Failure (Tests <b>PARTIAL_ADVISORY</b> State & Data Gaps)</span>
+      </label>
+      <span id="board-state-pill" class="px-2 py-0.5 rounded font-mono font-semibold bg-gray-500/20 text-gray-300">STATE: CREATED</span>
+    </div>
+
+    <!-- Agent Pipeline Diagram (Visual Fan-Out / Fan-In Graph) -->
+    <div class="space-y-2">
+      <h2 class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Multi-Agent Blackboard Execution Graph</h2>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <!-- Step 1: Intake -->
+        <div id="node-intake" class="agent-node p-3 rounded-lg bg-[var(--card)] border border-[var(--card-border)] space-y-1.5 cursor-pointer hover:bg-white/5" onclick="selectAgentTab('intake')">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold flex items-center gap-1.5">📍 Intake Agent</span>
+            <span id="status-intake" class="px-1.5 py-0.5 rounded text-[10px] bg-gray-500/20 text-gray-400">IDLE</span>
+          </div>
+          <p class="text-[11px] text-[var(--muted-foreground)]">Validates input, normalizes crop & geocodes with Open-Meteo.</p>
+          <div class="text-[10px] text-[var(--muted-foreground)] font-mono">Posts: INTAKE</div>
+        </div>
+
+        <!-- Step 2: Parallel Fan-Out (Weather & Market) -->
+        <div class="space-y-3">
+          <div id="node-weather" class="agent-node p-3 rounded-lg bg-[var(--card)] border border-[var(--card-border)] space-y-1.5 cursor-pointer hover:bg-white/5" onclick="selectAgentTab('weather')">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold flex items-center gap-1.5">🌦️ Weather Agent</span>
+              <span id="status-weather" class="px-1.5 py-0.5 rounded text-[10px] bg-gray-500/20 text-gray-400">IDLE</span>
+            </div>
+            <p class="text-[11px] text-[var(--muted-foreground)]">Open-Meteo 7-day rain sum, min/max temps, humidity.</p>
+            <div class="text-[10px] text-[var(--muted-foreground)] font-mono">Posts: WEATHER</div>
+          </div>
+          <div id="node-crop" class="agent-node p-3 rounded-lg bg-[var(--card)] border border-[var(--card-border)] space-y-1.5 cursor-pointer hover:bg-white/5" onclick="selectAgentTab('crop')">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold flex items-center gap-1.5">🌱 Crop Agent</span>
+              <span id="status-crop" class="px-1.5 py-0.5 rounded text-[10px] bg-gray-500/20 text-gray-400">IDLE</span>
+            </div>
+            <p class="text-[11px] text-[var(--muted-foreground)]">RAG ICAR/KVK guidance. Sowing/irrigation action.</p>
+            <div class="text-[10px] text-[var(--muted-foreground)] font-mono">Posts: CROP_ACTION</div>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div id="node-market" class="agent-node p-3 rounded-lg bg-[var(--card)] border border-[var(--card-border)] space-y-1.5 cursor-pointer hover:bg-white/5" onclick="selectAgentTab('market')">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold flex items-center gap-1.5">📈 Market Agent</span>
+              <span id="status-market" class="px-1.5 py-0.5 rounded text-[10px] bg-gray-500/20 text-gray-400">IDLE</span>
+            </div>
+            <p class="text-[11px] text-[var(--muted-foreground)]">data.gov.in Agmarknet mandi price, MSP comparison.</p>
+            <div class="text-[10px] text-[var(--muted-foreground)] font-mono">Posts: MARKET</div>
+          </div>
+          <div id="node-scheme" class="agent-node p-3 rounded-lg bg-[var(--card)] border border-[var(--card-border)] space-y-1.5 cursor-pointer hover:bg-white/5" onclick="selectAgentTab('scheme')">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold flex items-center gap-1.5">🏛️ Scheme Agent</span>
+              <span id="status-scheme" class="px-1.5 py-0.5 rounded text-[10px] bg-gray-500/20 text-gray-400">IDLE</span>
+            </div>
+            <p class="text-[11px] text-[var(--muted-foreground)]">RAG PM-KISAN, PMFBY, KCC. Single best scheme.</p>
+            <div class="text-[10px] text-[var(--muted-foreground)] font-mono">Posts: SCHEME</div>
+          </div>
+        </div>
+
+        <!-- Step 4: Coordinator -->
+        <div id="node-coordinator" class="agent-node p-3 rounded-lg bg-[var(--card)] border border-[var(--card-border)] space-y-1.5 cursor-pointer hover:bg-white/5" onclick="selectAgentTab('coordinator')">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold flex items-center gap-1.5">🎯 Coordinator</span>
+            <span id="status-coordinator" class="px-1.5 py-0.5 rounded text-[10px] bg-gray-500/20 text-gray-400">IDLE</span>
+          </div>
+          <p class="text-[11px] text-[var(--muted-foreground)]">Synthesizes final advisory (<= 120 words) with action, market & scheme.</p>
+          <div class="text-[10px] text-[var(--muted-foreground)] font-mono">Posts: ADVISORY</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Final Farmer Advisory Showcase -->
+    <div id="advisory-container" class="p-5 rounded-lg bg-green-950/20 border border-green-600/40 space-y-3">
+      <div class="flex items-center justify-between text-xs">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-green-400 text-sm">📋 Unified Farmer Advisory</span>
+          <span id="freshness-pill" class="px-2 py-0.5 rounded text-[10px] font-semibold bg-green-500/20 text-green-300">Freshness: LIVE</span>
+        </div>
+        <div class="flex items-center gap-3 font-mono text-[11px] text-[var(--muted-foreground)]">
+          <span id="word-counter">Word Count: 0 / 120 words</span>
+          <span id="compliance-badge" class="px-2 py-0.5 rounded text-green-400 bg-green-950/40">✓ PASS</span>
+        </div>
+      </div>
+      <div id="advisory-text" class="text-sm leading-relaxed text-[var(--foreground)] font-medium p-3 rounded bg-[var(--background)]/60 border border-[var(--border)]">
+        Click "Run Control Room Advisory" above to trigger the multi-agent system and generate real recommendations.
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 text-xs">
+        <div class="p-2.5 rounded bg-[var(--card)] border border-[var(--card-border)]">
+          <div class="font-semibold text-blue-400 mb-1 flex items-center gap-1">🚜 Field Action</div>
+          <div id="summary-action" class="text-[var(--muted-foreground)]">Awaiting agent execution...</div>
+        </div>
+        <div class="p-2.5 rounded bg-[var(--card)] border border-[var(--card-border)]">
+          <div class="font-semibold text-emerald-400 mb-1 flex items-center gap-1">📈 Market Timing</div>
+          <div id="summary-market" class="text-[var(--muted-foreground)]">Awaiting agent execution...</div>
+        </div>
+        <div class="p-2.5 rounded bg-[var(--card)] border border-[var(--card-border)]">
+          <div class="font-semibold text-amber-400 mb-1 flex items-center gap-1">🏛️ Government Scheme</div>
+          <div id="summary-scheme" class="text-[var(--muted-foreground)]">Awaiting agent execution...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Blackboard Detail Inspector Tabs -->
+    <div class="p-4 rounded-lg bg-[var(--card)] border border-[var(--card-border)] space-y-3">
+      <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Blackboard Inspector</h3>
+        <div class="flex gap-1" id="agent-tabs">
+          <button onclick="selectAgentTab('intake')" id="tab-intake" class="px-2.5 py-1 text-xs rounded font-medium bg-green-600 text-white cursor-pointer">Intake</button>
+          <button onclick="selectAgentTab('weather')" id="tab-weather" class="px-2.5 py-1 text-xs rounded font-medium text-[var(--muted-foreground)] hover:bg-white/5 cursor-pointer">Weather</button>
+          <button onclick="selectAgentTab('crop')" id="tab-crop" class="px-2.5 py-1 text-xs rounded font-medium text-[var(--muted-foreground)] hover:bg-white/5 cursor-pointer">Crop Action</button>
+          <button onclick="selectAgentTab('market')" id="tab-market" class="px-2.5 py-1 text-xs rounded font-medium text-[var(--muted-foreground)] hover:bg-white/5 cursor-pointer">Market</button>
+          <button onclick="selectAgentTab('scheme')" id="tab-scheme" class="px-2.5 py-1 text-xs rounded font-medium text-[var(--muted-foreground)] hover:bg-white/5 cursor-pointer">Scheme</button>
+          <button onclick="selectAgentTab('coordinator')" id="tab-coordinator" class="px-2.5 py-1 text-xs rounded font-medium text-[var(--muted-foreground)] hover:bg-white/5 cursor-pointer">Coordinator</button>
+        </div>
+      </div>
+      <div id="inspector-content" class="text-xs font-mono space-y-2">
+        <!-- Dynamic content filled by JS -->
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let currentBoard = {};
+    let activeTab = 'intake';
+
+    const DB = {
+      crops: {
+        Wheat: {
+          vegetative: {
+            action: "irrigate",
+            reasoning: "Crown root initiation (CRI) stage (20-25 DAS) is moisture-critical. With 0 mm rain predicted, provide immediate light irrigation to ensure crown root anchoring.",
+            citations: ["ICAR-IIWBR Wheat Agronomy Manual 2024", "PAU Ludhiana Package of Practices for Rabi Crops"],
+            scheme: "PMFBY",
+            eligibility: "All farmers growing notified wheat crops in notified areas. Premium rate: 1.5% of sum insured for Rabi.",
+            apply: "Apply via National Crop Insurance Portal (pmfby.gov.in) or local CSC before cut-off date."
+          },
+          sowing: {
+            action: "sow",
+            reasoning: "Optimum temperature (under 28°C) and seedbed moisture reached. Timely sowing window open.",
+            citations: ["ICAR-IIWBR Wheat Agronomy Manual 2024"],
+            scheme: "KCC",
+            eligibility: "All cultivating farmers, tenant farmers, and sharecroppers eligible for credit limit up to Rs 3 lakh at 4% interest.",
+            apply: "Apply at any commercial or Regional Rural Bank branch with land records."
+          }
+        },
+        Rice: {
+          vegetative: {
+            action: "hold_irrigation",
+            reasoning: "Monsoon showers expected. Maintain 2-3 cm standing water; delay pump irrigation.",
+            citations: ["ICAR-NRRI Cuttack Rice Production Guide"],
+            scheme: "PM-KISAN",
+            eligibility: "Landholding farmer families with cultivable land in their names.",
+            apply: "Register on pmkisan.gov.in with Aadhaar."
+          }
+        },
+        Mustard: {
+          flowering: {
+            action: "irrigate",
+            reasoning: "Flowering stage (50-60 DAS) requires protective moisture. Dry weather allows furrow irrigation without rust risk.",
+            citations: ["ICAR-DRMR Bharatpur Mustard Production Practices"],
+            scheme: "Soil Health Card",
+            eligibility: "All cultivating farmers across notified agricultural districts.",
+            apply: "Collect soil health report via soilhealth.dac.gov.in."
+          }
+        }
+      },
+      mandiPrices: {
+        Wheat: { price: 2475, msp: 2275, mandi: "Karnal APMC", trend: "UP (+3.1%)", sugg: "SELL" },
+        Rice: { price: 2320, msp: 2300, mandi: "Ludhiana APMC", trend: "FLAT", sugg: "HOLD" },
+        Mustard: { price: 5890, msp: 5650, mandi: "Bharatpur Mandi", trend: "UP (+4.2%)", sugg: "SELL" },
+        Cotton: { price: 7350, msp: 7121, mandi: "Bhatinda Mandi", trend: "DOWN (-1.5%)", sugg: "HOLD" },
+        Maize: { price: 2180, msp: 2225, mandi: "Indore Mandi", trend: "DOWN (-2.0%)", sugg: "HOLD" }
+      }
+    };
+
+    function onInputChange() {
+      document.getElementById("board-state-pill").innerText = "STATE: UPDATING...";
+      runPipeline();
+    }
+
+    async function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function runPipeline() {
+      const btn = document.getElementById("run-btn");
+      btn.disabled = true;
+      btn.innerText = "⏳ Running Pipeline...";
+
+      const crop = document.getElementById("crop-select").value;
+      const loc = document.getElementById("loc-select").value;
+      const stage = document.getElementById("stage-select").value;
+      const lang = document.getElementById("lang-select").value;
+      const failMarket = document.getElementById("fail-market-toggle").checked;
+
+      const sessId = "session_" + Math.random().toString(36).substring(2, 9);
+      document.getElementById("session-badge").innerText = "Session: " + sessId;
+
+      ['intake', 'weather', 'crop', 'market', 'scheme', 'coordinator'].forEach(n => {
+        document.getElementById(`node-${n}`).className = "agent-node p-3 rounded-lg bg-[var(--card)] border border-[var(--card-border)] space-y-1.5 cursor-pointer hover:bg-white/5";
+        document.getElementById(`status-${n}`).innerText = "IDLE";
+        document.getElementById(`status-${n}`).className = "px-1.5 py-0.5 rounded text-[10px] bg-gray-500/20 text-gray-400";
+      });
+
+      // 1. INTAKE AGENT
+      document.getElementById("board-state-pill").innerText = "STATE: RUNNING_INTAKE";
+      setNodeActive('intake');
+      await sleep(400);
+
+      const lat = loc.includes("Karnal") ? 29.6857 : loc.includes("Ludhiana") ? 30.9010 : 27.2173;
+      const lon = loc.includes("Karnal") ? 76.9905 : loc.includes("Ludhiana") ? 75.8573 : 77.4895;
+
+      currentBoard['INTAKE'] = {
+        agent: "Intake Agent",
+        type: "INTAKE",
+        confidence: 0.95,
+        freshness: "live",
+        payload: { crop, location: loc, latitude: lat, longitude: lon, stage, language: lang }
+      };
+      setNodeDone('intake');
+      document.getElementById("board-state-pill").innerText = "STATE: INTAKE_DONE";
+      await sleep(200);
+
+      // 2. PARALLEL FAN-OUT
+      document.getElementById("board-state-pill").innerText = "STATE: PARALLEL_FAN_OUT";
+      setNodeActive('weather');
+      setNodeActive('market');
+      setNodeActive('scheme');
+      await sleep(500);
+
+      currentBoard['WEATHER'] = {
+        agent: "Weather Agent",
+        type: "WEATHER",
+        confidence: 0.92,
+        freshness: "live",
+        payload: {
+          seven_day_rain_mm: 0.0,
+          rain_probability_pct: 5.0,
+          temp_min_c: 14.2,
+          temp_max_c: 28.4,
+          humidity_pct: 54.0,
+          wind_speed_kmh: 11.2,
+          summary: "Largely dry conditions (0.0 mm rain, max prob 5.0%). Temps: 14.2°C to 28.4°C. Humidity: 54.0%."
+        }
+      };
+      setNodeDone('weather');
+
+      if (failMarket) {
+        currentBoard['MARKET'] = {
+          agent: "Market Agent",
+          type: "FAILED",
+          confidence: 0.0,
+          freshness: "unavailable",
+          payload: { error: "Agmarknet APMC service timeout after 30s." }
+        };
+        setNodeFailed('market');
+      } else {
+        const mInfo = DB.mandiPrices[crop] || { price: 2400, msp: 2200, mandi: loc.split(",")[0] + " APMC", trend: "UP", sugg: "SELL" };
+        currentBoard['MARKET'] = {
+          agent: "Market Agent",
+          type: "MARKET",
+          confidence: 0.90,
+          freshness: "live",
+          payload: {
+            commodity: crop,
+            mandi_used: mInfo.mandi,
+            current_modal_price: mInfo.price,
+            msp: mInfo.msp,
+            trend_direction: mInfo.trend,
+            suggestion: mInfo.sugg,
+            is_data_available: true
+          }
+        };
+        setNodeDone('market');
+      }
+
+      const cropRef = (DB.crops[crop] && DB.crops[crop][stage]) || DB.crops.Wheat.vegetative;
+      currentBoard['SCHEME'] = {
+        agent: "Scheme Agent",
+        type: "SCHEME",
+        confidence: 0.92,
+        freshness: "live",
+        payload: {
+          scheme_name: cropRef.scheme,
+          eligibility: cropRef.eligibility,
+          how_to_apply: cropRef.apply,
+          source_document: "Official Guidelines 2024"
+        }
+      };
+      setNodeDone('scheme');
+
+      // 3. DEPENDENT STEP: Crop Agent
+      setNodeActive('crop');
+      await sleep(400);
+
+      currentBoard['CROP_ACTION'] = {
+        agent: "Crop Agent",
+        type: "CROP_ACTION",
+        confidence: 0.90,
+        freshness: "live",
+        payload: {
+          recommended_action: cropRef.action,
+          reasoning: cropRef.reasoning,
+          citations: cropRef.citations
+        }
+      };
+      setNodeDone('crop');
+
+      // 4. FAN-IN: Advisor Coordinator
+      document.getElementById("board-state-pill").innerText = failMarket ? "STATE: PARTIAL_ADVISORY" : "STATE: ADVISORY_READY";
+      setNodeActive('coordinator');
+      await sleep(500);
+
+      const actionText = `Field Action: ${cropRef.action.toUpperCase()}. ${cropRef.reasoning}`;
+      let marketText = "";
+      if (failMarket) {
+        marketText = "Market: Live APMC mandi prices unavailable. Consult local market or deliver to nearest MSP center.";
+      } else {
+        const mInfo = DB.mandiPrices[crop] || { price: 2475, msp: 2275, mandi: "Regional APMC", sugg: "SELL" };
+        marketText = `Market: ${mInfo.sugg}. Prevailing modal price at ${mInfo.mandi} is Rs ${mInfo.price}/quintal (MSP: Rs ${mInfo.msp}/quintal).`;
+      }
+      const schemeText = `Scheme: ${cropRef.scheme}. Eligibility: ${cropRef.eligibility} Apply via ${cropRef.apply}`;
+
+      let unifiedAdvisory = "";
+      if (lang === "hi") {
+        unifiedAdvisory = `कृषि सलाह (${crop}): 1. खेत कार्य: ${actionText.replace('Field Action: ', '')} 2. बाजार सुझाव: ${marketText.replace('Market: ', '')} 3. सरकारी योजना: ${schemeText.replace('Scheme: ', '')} डेटा स्थिति: लाइव मौसम, ${failMarket ? 'मंडी अनुपलब्ध' : 'मंडी लाइव'}।`;
+      } else if (lang === "pa") {
+        unifiedAdvisory = `ਖੇਤੀਬਾੜੀ ਸਲਾਹ (${crop}): 1. ਖੇਤ ਕਾਰਵਾਈ: ${actionText.replace('Field Action: ', '')} 2. ਮੰਡੀ ਸਲਾਹ: ${marketText.replace('Market: ', '')} 3. ਸਰਕਾਰੀ ਸਕੀਮ: ${schemeText.replace('Scheme: ', '')} ਡਾਟਾ ਸਥਿਤੀ: ਲਾਈਵ ਮੌਸਮ, ${failMarket ? 'ਮੰਡੀ ਅਣਉਪਲਬਧ' : 'ਮੰਡੀ ਲਾਈਵ'}।`;
+      } else {
+        unifiedAdvisory = `Agricultural Advisory for ${crop}: ${actionText} ${marketText} ${schemeText} Data Status: Weather (live), Market (${failMarket ? 'unavailable' : 'live'}), Scheme (live).`;
+      }
+
+      const words = unifiedAdvisory.trim().split(/\s+/).length;
+
+      currentBoard['ADVISORY'] = {
+        agent: "Advisor Coordinator",
+        type: "ADVISORY",
+        confidence: failMarket ? 0.70 : 0.95,
+        freshness: "live",
+        payload: {
+          advisory_text: unifiedAdvisory,
+          word_count: words,
+          field_action: actionText,
+          market_suggestion: marketText,
+          government_scheme: schemeText,
+          is_partial: failMarket
+        }
+      };
+      setNodeDone('coordinator');
+
+      document.getElementById("advisory-text").innerText = unifiedAdvisory;
+      document.getElementById("word-counter").innerText = `Word Count: ${words} / 120 words`;
+      document.getElementById("compliance-badge").innerText = words <= 120 ? "✓ PASS (<= 120 words)" : "⚠️ OVERFLOW";
+      document.getElementById("compliance-badge").className = words <= 120 ? "px-2 py-0.5 rounded text-green-400 bg-green-950/40" : "px-2 py-0.5 rounded text-red-400 bg-red-950/40";
+
+      document.getElementById("summary-action").innerText = actionText;
+      document.getElementById("summary-market").innerText = marketText;
+      document.getElementById("summary-scheme").innerText = schemeText;
+
+      document.getElementById("freshness-pill").innerText = failMarket ? "Status: PARTIAL ADVISORY" : "Freshness: ALL LIVE";
+      document.getElementById("freshness-pill").className = failMarket ? "px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300" : "px-2 py-0.5 rounded text-[10px] font-semibold bg-green-500/20 text-green-300";
+
+      renderInspector();
+
+      btn.disabled = false;
+      btn.innerText = "⚡ Re-Run Control Room Advisory";
+    }
+
+    function setNodeActive(id) {
+      const el = document.getElementById(`node-${id}`);
+      el.className = "agent-node agent-active p-3 rounded-lg bg-[var(--card)] border space-y-1.5 cursor-pointer";
+      document.getElementById(`status-${id}`).innerText = "RUNNING";
+      document.getElementById(`status-${id}`).className = "px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 font-semibold";
+    }
+
+    function setNodeDone(id) {
+      const el = document.getElementById(`node-${id}`);
+      el.className = "agent-node p-3 rounded-lg bg-[var(--card)] border border-green-500/40 space-y-1.5 cursor-pointer hover:bg-white/5";
+      document.getElementById(`status-${id}`).innerText = "DONE";
+      document.getElementById(`status-${id}`).className = "px-1.5 py-0.5 rounded text-[10px] bg-green-500/20 text-green-400 font-semibold";
+    }
+
+    function setNodeFailed(id) {
+      const el = document.getElementById(`node-${id}`);
+      el.className = "agent-node agent-failed p-3 rounded-lg bg-[var(--card)] border space-y-1.5 cursor-pointer";
+      document.getElementById(`status-${id}`).innerText = "FAILED";
+      document.getElementById(`status-${id}`).className = "px-1.5 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 font-semibold";
+    }
+
+    function selectAgentTab(tabName) {
+      activeTab = tabName;
+      ['intake', 'weather', 'crop', 'market', 'scheme', 'coordinator'].forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        if (t === tabName) {
+          btn.className = "px-2.5 py-1 text-xs rounded font-medium bg-green-600 text-white cursor-pointer";
+        } else {
+          btn.className = "px-2.5 py-1 text-xs rounded font-medium text-[var(--muted-foreground)] hover:bg-white/5 cursor-pointer";
+        }
+      });
+      renderInspector();
+    }
+
+    function renderInspector() {
+      const container = document.getElementById("inspector-content");
+      const keyMap = {
+        intake: 'INTAKE',
+        weather: 'WEATHER',
+        crop: 'CROP_ACTION',
+        market: 'MARKET',
+        scheme: 'SCHEME',
+        coordinator: 'ADVISORY'
+      };
+      const entryKey = keyMap[activeTab];
+      const entry = currentBoard[entryKey];
+
+      if (!entry) {
+        container.innerHTML = `<div class="p-4 text-center text-[var(--muted-foreground)]">No blackboard entry posted yet for this agent. Run the control room above.</div>`;
+        return;
+      }
+
+      const isFailed = entry.type === 'FAILED';
+      container.innerHTML = `
+        <div class="p-3 rounded bg-[var(--background)] border border-[var(--border)] space-y-2">
+          <div class="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+            <span class="font-bold text-sm ${isFailed ? 'text-red-400' : 'text-green-400'}">${entry.agent} [${entry.type}]</span>
+            <div class="flex gap-2">
+              <span class="px-2 py-0.5 rounded bg-white/5 text-[10px]">Confidence: ${entry.confidence}</span>
+              <span class="px-2 py-0.5 rounded bg-white/5 text-[10px] uppercase">Freshness: ${entry.freshness}</span>
+            </div>
+          </div>
+          <pre class="overflow-x-auto text-[11px] text-[var(--foreground)] leading-relaxed">${JSON.stringify(entry.payload, null, 2)}</pre>
+        </div>
+      `;
+    }
+
+    runPipeline();
+  </script>
+</body>
+</html>

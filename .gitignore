@@ -1,0 +1,26 @@
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Environment and secrets
+.env
+.venv/
+env/
+venv/
+ENV/
+
+# Temporary and database files
+*.db
+*.db-journal
+test_*.pdf
+Project2_MultiAgent_Agricultural_Control_Room_Submission.pdf
+
+# Duplicate local working directories
+AGRICULTURAL ADVISORY CONTROL ROOM Objective/
+
+# Operating System files
+.DS_Store
+Thumbs.db
